@@ -700,90 +700,96 @@ def plot_4metric_by_month(
     y_name='y', mask_var='ocean_mask',
     ssim_win_size=None, ssim_sigma=None,
     ymin=None, ymax=None,
-    model_type="cnn"
+    model_type="cnn",
 ):
     """
-    Compute and plot monthly performance metrics for a CNN over selected days
-    in each month (1, 7, 14, 28).
+    Compute and plot monthly performance metrics (R², bias, MAE, SSIM) over
+    selected days in each month (1, 7, 14, 28) for either a CNN or a BRT model.
 
-    For each year in ``years``, this function:
-      1. Selects all timesteps from ``data`` within that year.
-      2. Groups timesteps by (year, month).
-      3. Within each month, selects dates whose day-of-month is in {1, 7, 14, 28}.
-      4. Builds a batch (B, H, W, C) of inputs for those selected days using
-         normalized numerical variables (``num_var``) and categorical variables
-         (``cat_var``).
-      5. Runs the model to obtain predictions for the batch.
-      6. For each day in the batch, masks land using ``mask_var``, drops NaNs,
-         and computes per-day metrics:
-            * R²
-            * Bias (pred - truth)
-            * MAE
-            * SSIM (with optional window size and Gaussian sigma)
-      7. Averages the per-day metric values within the month to obtain
-         a monthly metric.
-      8. Produces a 2×2 panel plot of monthly metrics across all years, with an
-         optional highlight for the ``training_year``.
+    For each year in ``years``:
+      1. Select timesteps from ``data`` within that year.
+      2. Group timesteps by (year, month).
+      3. Within each month, select dates whose day-of-month is in {1, 7, 14, 28}.
+      4. For each selected date, build an (H, W, C) feature map using numerical
+         variables (``num_var``) and categorical variables (``cat_var``). If
+         ``X_mean``/``X_std`` are provided, numerical variables are normalized.
+      5. Run the model to obtain predictions for each (H, W) field:
+           - If ``model_type == "cnn"``:
+               * Stack daily inputs into (B, H, W, C) and call
+                 ``model.predict(X_batch)``.
+               * Output is expected as (B, H, W) or (B, H, W, 1).
+           - If ``model_type == "brt"``:
+               * For each day, reshape (H, W, C) → (H*W, C),
+                 call ``model.predict(X_flat)``, then reshape predictions
+                 back to (H, W).
+      6. For each day, mask land using ``mask_var``, drop NaNs and compute:
+           * R²
+           * Bias (pred - truth)
+           * MAE
+           * SSIM (with optional window size and Gaussian sigma)
+      7. Average daily metrics within each month (via ``np.nanmean``) to obtain
+         a monthly value.
+      8. Produce a 2×2 panel plot of monthly metrics across all years, with an
+         optional highlight for ``training_year``.
 
     Months that do not contain any of the target days {1, 7, 14, 28} are skipped.
 
     Parameters
     ----------
     data : xarray.Dataset
-        Dataset containing the target variable and all predictor variables.
-        Must have a ``time`` dimension and at least the variables listed in
-        ``num_var``, ``cat_var``, ``y_name``, and ``mask_var``.
+        Dataset containing the target and predictor variables.
+        Must have a ``time`` dimension and at least the variables in
+        ``num_var``, ``cat_var``, ``y_name`` and ``mask_var``.
     years : sequence of int
-        Years to evaluate. Each value is used with ``data.sel(time=year)``.
-    model : tf.keras.Model or compatible
-        Trained model that accepts inputs shaped (B, H, W, C) and returns
-        predictions of shape (B, H, W) or (B, H, W, 1).
-    X_mean : array-like of float
-        Per-channel means used to normalize the numerical variables in
-        ``num_var``. Length must match ``len(num_var)``.
-    X_std : array-like of float
-        Per-channel standard deviations used to normalize the numerical
-        variables in ``num_var``. Length must match ``len(num_var)``.
-        If a standard deviation is zero, that channel is left unscaled.
+        Years to evaluate (used with ``data.sel(time=year)``).
+    model : object
+        - If ``model_type == "cnn"``: a tf.keras.Model (or compatible) that
+          accepts (B, H, W, C) and returns (B, H, W) or (B, H, W, 1).
+        - If ``model_type == "brt"``: a scikit-learn-like regressor with
+          ``predict(X_2d)`` where X_2d has shape (n_samples, n_features).
+    X_mean : array-like of float or None
+        Per-channel means for numerical variables in ``num_var``.
+        Length must match ``len(num_var)`` if not None. If None, no mean/std
+        normalization is applied.
+    X_std : array-like of float or None
+        Per-channel standard deviations for numerical variables in ``num_var``.
+        Length must match ``len(num_var)`` if not None. If a std is zero, that
+        channel is left unscaled. If None, no mean/std normalization is applied.
     num_var : list of str
         Names of numerical predictor variables in ``data``. Each is fetched,
-        broadcast to the target grid, normalized with ``X_mean`` and ``X_std``,
-        and stacked as a channel.
+        broadcast to the target grid, optionally normalized, and stacked as a
+        channel.
     cat_var : list of str
-        Names of categorical or non-normalized predictor variables in ``data``.
+        Names of categorical / non-normalized predictor variables in ``data``.
         Each is fetched, broadcast to the target grid, and stacked as a channel
         (no mean/std normalization).
     training_year : int, optional
-        Year that was used for training the model. If provided, that year's
-        lines are plotted with a dashed style and labeled "(train)".
+        Year used for training. If provided, that year's line is dashed and
+        labeled "(train)".
     y_name : str, default "y"
         Name of the target variable in ``data``.
     mask_var : str, default "ocean_mask"
-        Name of the land/ocean mask variable in ``data``. Values equal to 0.0
-        are treated as land and masked out before computing metrics.
+        Name of the land/ocean mask variable. Values equal to 0.0 are treated
+        as land and masked out.
     ssim_win_size : int, optional
-        Window size for the SSIM computation. Must be odd if provided.
-        If None, the default behavior of ``skimage.metrics.structural_similarity``
-        is used.
+        Window size for SSIM. Must be odd if provided.
     ssim_sigma : float, optional
-        Standard deviation for the Gaussian weights in SSIM. If provided,
-        Gaussian-weighted SSIM is used.
-    ymin : float, optional
-        Lower y-limit for all metric subplots. If None, matplotlib defaults
-        are used.
-    ymax : float, optional
-        Upper y-limit for all metric subplots. If None, matplotlib defaults
-        are used.
+        Standard deviation for Gaussian-weighted SSIM. If provided, Gaussian
+        weights are used.
+    ymin, ymax : float, optional
+        Common y-limits for all metric subplots. If None, matplotlib defaults.
+    model_type : {"cnn", "brt"}, default "cnn"
+        Type of model:
+          - "cnn": use batched (B, H, W, C) predictions.
+          - "brt": predict on flattened features per day and reshape back.
 
     Notes
     -----
     - SSIM is computed on fields where land is masked and NaNs are filled with
-      the mean of the valid values for that day (or 0 if no finite values).
-    - For each metric, daily values within a month are averaged with
-      ``np.nanmean`` to obtain the monthly score.
-    - The resulting figure shows four panels (R², Bias, MAE, SSIM) with
-      month on the x-axis (1–12) and the metric on the y-axis, with one
-      line per year.
+      the mean of valid values for that day (or 0 if none).
+    - Daily metric values within a month are averaged via ``np.nanmean``.
+    - The resulting figure shows four panels (R², Bias, MAE, SSIM) with month
+      on the x-axis (1–12) and one line per year.
     """
     # helper
     def fetch_2d(ds, var, date, like_var):
@@ -791,8 +797,12 @@ def plot_4metric_by_month(
         arr_t = arr.sel(time=date) if 'time' in arr.dims else arr
         arr_t = arr_t.broadcast_like(ds[like_var].sel(time=date))
         # ensure spatial order is (lat, lon)
-        if tuple(d for d in arr_t.dims if d != 'time') != ('lat','lon'):
-            arr_t = arr_t.transpose(..., 'lat', 'lon') if 'time' in arr_t.dims else arr_t.transpose('lat','lon')
+        if tuple(d for d in arr_t.dims if d != 'time') != ('lat', 'lon'):
+            arr_t = (
+                arr_t.transpose(..., 'lat', 'lon')
+                if 'time' in arr_t.dims
+                else arr_t.transpose('lat', 'lon')
+            )
         return arr_t.values.astype('float32', copy=False)
 
     # target days within each month
@@ -805,72 +815,82 @@ def plot_4metric_by_month(
         ds = data.sel(time=year)
         dates = pd.to_datetime(ds.time.values)
 
-        # group all available dates by (year, month)
         gb = pd.Series(dates).groupby([dates.year, dates.month])
 
-        # per-metric monthly-score lists
         scores_dict = {m: [] for m in metrics}
         months_list = []
 
-        # iterate months in order
         for (yy, mm), group in gb:
-            # pick the subset of this month's dates matching target_days
             month_dates = list(group)
             pick = [d for d in month_dates if d.day in target_days]
             if len(pick) == 0:
-                continue  # skip months without any of the requested days
+                continue
 
-            # ---- build (B,H,W,C) batch for these selected days
             chans_list = []
             truths = []
-            lands  = []
+            lands = []
+            pred_list = []
+
             for date in pick:
-                # build (H,W,C) input for this date
                 chans = []
                 for k, v in enumerate(num_var):
                     a = fetch_2d(ds, v, date, y_name)
-                    denom = 1.0 if X_std[k] == 0 else X_std[k]
-                    a = (a - X_mean[k]) / denom
+                    if X_mean is not None and X_std is not None:
+                        denom = 1.0 if X_std[k] == 0 else X_std[k]
+                        a = (a - X_mean[k]) / denom
                     chans.append(np.nan_to_num(a))
                 for v in cat_var:
                     a = fetch_2d(ds, v, date, y_name)
                     chans.append(np.nan_to_num(a))
-                X_map = np.stack(chans, axis=-1)
-                chans_list.append(X_map)
 
-                # truth & land mask for this date
-                truth = fetch_2d(ds, y_name, date, y_name)
-                land  = (fetch_2d(ds, mask_var, date, y_name) == 0.0)
-                truths.append(truth)
-                lands.append(land)
+                X_map = np.stack(chans, axis=-1)  # (H, W, C)
+                truths.append(fetch_2d(ds, y_name, date, y_name))
+                lands.append(fetch_2d(ds, mask_var, date, y_name) == 0.0)
 
-            X_batch = np.stack(chans_list, axis=0)  # (B,H,W,C)
+                if model_type == "cnn":
+                    chans_list.append(X_map)
+                elif model_type == "brt":
+                    H, W, C = X_map.shape
+                    X_flat = X_map.reshape(-1, C)
+                    pred_flat = model.predict(X_flat)
+                    pred_list.append(pred_flat.reshape(H, W))
+                else:
+                    raise ValueError(f"Unknown model_type: {model_type!r}")
 
             # ---- predict batch
-            pred_batch = model.predict(X_batch, verbose=0)
-            if pred_batch.ndim == 4 and pred_batch.shape[-1] == 1:
-                pred_batch = pred_batch[..., 0]  # (B,H,W)
+            if model_type == "cnn":
+                X_batch = np.stack(chans_list, axis=0)  # (B, H, W, C)
+                pred_batch = model.predict(X_batch, verbose=0)
+                if pred_batch.ndim == 4 and pred_batch.shape[-1] == 1:
+                    pred_batch = pred_batch[..., 0]  # (B, H, W)
+            else:  # brt
+                pred_batch = np.stack(pred_list, axis=0)  # (B, H, W)
 
-            # ---- compute per-day metrics, then average for the month
+            # ---- metrics
             r2_vals, bias_vals, mae_vals, ssim_vals = [], [], [], []
             for b, date in enumerate(pick):
                 truth = np.where(lands[b], np.nan, truths[b])
-                pred  = np.where(lands[b], np.nan, pred_batch[b])
+                pred = np.where(lands[b], np.nan, pred_batch[b])
 
-                # pointwise mask
                 m = ~np.isnan(truth) & ~np.isnan(pred)
 
-                # r2 / bias / mae
                 if m.any():
                     r2_vals.append(r2_score(truth[m].ravel(), pred[m].ravel()))
                     mae_vals.append(float(mean_absolute_error(truth[m], pred[m])))
                     bias_vals.append(float(np.mean(pred[m] - truth[m])))
                 else:
-                    r2_vals.append(np.nan); mae_vals.append(np.nan); bias_vals.append(np.nan)
+                    r2_vals.append(np.nan)
+                    mae_vals.append(np.nan)
+                    bias_vals.append(np.nan)
 
-                # ssim
-                t = np.nan_to_num(truth, nan=(np.nanmean(truth) if np.isfinite(truth).any() else 0.0))
-                p = np.nan_to_num(pred,  nan=(np.nanmean(pred)  if np.isfinite(pred).any()  else 0.0))
+                t = np.nan_to_num(
+                    truth,
+                    nan=(np.nanmean(truth) if np.isfinite(truth).any() else 0.0),
+                )
+                p = np.nan_to_num(
+                    pred,
+                    nan=(np.nanmean(pred) if np.isfinite(pred).any() else 0.0),
+                )
                 dr = np.nanmax(truth) - np.nanmin(truth)
                 if not np.isfinite(dr) or dr == 0:
                     dr = (np.nanmax(t) - np.nanmin(t)) or 1.0
@@ -880,9 +900,10 @@ def plot_4metric_by_month(
                 if ssim_sigma is not None:
                     ssim_kwargs["gaussian_weights"] = True
                     ssim_kwargs["sigma"] = float(ssim_sigma)
-                ssim_vals.append(ssim(t.astype(np.float64), p.astype(np.float64), **ssim_kwargs))
+                ssim_vals.append(
+                    ssim(t.astype(np.float64), p.astype(np.float64), **ssim_kwargs)
+                )
 
-            # monthly average over the selected days
             months_list.append(mm)
             scores_dict['r2'].append(np.nanmean(r2_vals))
             scores_dict['bias'].append(np.nanmean(bias_vals))
@@ -894,9 +915,9 @@ def plot_4metric_by_month(
             metric_by_year_month[m][year] = (months, scores_dict[m])
 
     # ---- plotting: 2x2 panel ----
-    titles = {'r2':"$R^2$", 'bias':"Bias", 'mae':"MAE", 'ssim':"SSIM"}
+    titles = {'r2': "$R^2$", 'bias': "Bias", 'mae': "MAE", 'ssim': "SSIM"}
     fig, axs = plt.subplots(2, 2, figsize=(11, 7), constrained_layout=True)
-    axes = dict(zip(metrics, axs.ravel()))  # r2, bias, mae, ssim
+    axes = dict(zip(metrics, axs.ravel()))
 
     for m in metrics:
         ax = axes[m]
@@ -906,18 +927,22 @@ def plot_4metric_by_month(
             ax.plot(months, scores, style, marker='o', label=label)
         ax.set_title(f"Monthly {titles[m]}")
         ax.set_xlabel("Month")
-        ax.set_xticks(np.arange(1,13))
+        ax.set_xticks(np.arange(1, 13))
         ax.set_xticklabels(calendar.month_abbr[1:13])
         ax.grid(True)
         if ymin is not None or ymax is not None:
             ax.set_ylim(ymin, ymax)
 
-    # one legend for the whole figure
     handles, labels = axes['r2'].get_legend_handles_labels()
     if handles:
-        fig.legend(handles, labels, loc="upper center",
-            bbox_to_anchor=(0.5, 1.08),  # <--- move legend further up
-            ncol=min(len(labels), 6), frameon=False)
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.08),
+            ncol=min(len(labels), 6),
+            frameon=False,
+        )
     plt.show()
 
 import numpy as np

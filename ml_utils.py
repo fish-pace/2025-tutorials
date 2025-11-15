@@ -1257,3 +1257,112 @@ def add_distance_to_coast(ds: xr.Dataset,
                            name=out_name,
                            attrs={"units":"km", "long_name":"distance to coast (over ocean)"})
     return ds.assign({out_name: dist_da})
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+def count_valid_days_by_month(
+    ds: xr.Dataset,
+    year,
+    vars_to_check=("y",),          # str or iterable of str
+    mask_var="ocean_mask",         # 1=ocean, 0=land
+    nan_max_frac=0.05,             # allow ≤ 5% NaNs over ocean
+):
+    """
+    Return a Series with counts of days per month that pass the NaN filter.
+    A day passes iff, for every variable in `vars_to_check`, the number of
+    NaNs over the ocean is <= nan_max_frac * ocean_pixels_on_that_day.
+    """
+    # subset to the year
+    dsy = ds.sel(time=str(year))
+
+    # tidy inputs
+    if isinstance(vars_to_check, str):
+        vars_to_check = [vars_to_check]
+
+    # spatial mask, broadcast to (time, lat, lon)
+    ocean = dsy[mask_var].astype(bool)
+    if "time" not in ocean.dims:
+        ocean = ocean.expand_dims(time=dsy["time"])
+    # broadcast to the target grid (uses first var as template)
+    template = dsy[vars_to_check[0]] if vars_to_check else dsy["y"]
+    ocean = ocean.broadcast_like(template)
+
+    # how many ocean pixels each day?
+    spatial_dims = [d for d in ocean.dims if d != "time"]
+    ocean_count = ocean.sum(dim=spatial_dims)  # (time,)
+    nan_thresh_t = nan_max_frac * ocean_count  # per time-step threshold
+
+    # build per-var validity (True if NaN count over ocean <= threshold)
+    valid_per_var = []
+    for v in vars_to_check:
+        if v not in dsy:
+            raise KeyError(f"Variable '{v}' not in dataset.")
+        arr = dsy[v]
+        if "time" not in arr.dims:
+            arr = arr.expand_dims(time=dsy["time"])
+        arr = arr.broadcast_like(ocean)
+        v_nan = xr.apply_ufunc(np.isnan, arr) & ocean
+        v_nan_count = v_nan.sum(dim=spatial_dims)  # (time,)
+        valid_per_var.append(v_nan_count <= nan_thresh_t)
+
+    # day is valid if all vars pass
+    valid_all = xr.concat(valid_per_var, dim="var").all(dim="var")  # (time,) bool
+
+    # group by month and count
+    month_idx = pd.to_datetime(valid_all["time"].values).month
+    counts = pd.Series(valid_all.values, index=month_idx).groupby(level=0).sum().astype(int)
+    # ensure all months present
+    counts = counts.reindex(range(1,13), fill_value=0)
+    counts.index.name = "month"
+    counts.name = f"valid_days_{year}"
+    return counts
+
+import xarray as xr
+import numpy as np
+import pandas as pd
+
+def pct_missing_by_day_year(
+    ds: xr.Dataset,
+    year: int,
+    var: str = "y",
+    mask_var: str = "ocean_mask",   # 1=ocean, 0=land
+) -> pd.Series:
+    """
+    Return a Series with the percent of ocean pixels that are NaN
+    for each day in the given year.
+
+    Each value is:
+        (# NaN pixels over ocean) / (# ocean pixels) * 100
+    for the variable `var`.
+    """
+    # subset to year explicitly
+    dsy = ds.sel(time=ds["time"].dt.year == year)
+    if dsy.sizes.get("time", 0) == 0:
+        raise ValueError(f"No data found for year {year}.")
+
+    # ocean mask -> bool, broadcast to (time, lat, lon, ...)
+    ocean = dsy[mask_var].astype(bool)
+    if "time" not in ocean.dims:
+        ocean = ocean.expand_dims(time=dsy["time"])
+
+    arr = dsy[var]
+    if "time" not in arr.dims:
+        arr = arr.expand_dims(time=dsy["time"])
+
+    ocean = ocean.broadcast_like(arr)
+
+    # spatial dims (everything except time)
+    spatial_dims = [d for d in ocean.dims if d != "time"]
+
+    # counts per day
+    ocean_count = ocean.sum(dim=spatial_dims)          # (time,)
+    nan_mask = arr.isnull() & ocean
+    nan_count = nan_mask.sum(dim=spatial_dims)         # (time,)
+
+    frac = nan_count / ocean_count                     # (time,), 0–1
+    pct = (frac * 100).to_series()
+    pct.name = f"pct_missing_{var}_{year}"
+
+    return pct

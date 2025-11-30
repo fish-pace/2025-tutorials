@@ -1700,6 +1700,7 @@ def one_file_matches(
     ds_time_name: str = "time",
     ds_vec_name: Optional[str] = "wavelength",
     ds_var_name: str = "Rrs",
+    ds_vec_sel = None,
     df_lat_name: str = "lat",
     df_lon_name: str = "lon",
     df_time_name: str = "time",
@@ -1726,6 +1727,11 @@ def one_file_matches(
         Name of the spectral dimension in the PACE dataset (e.g. "wavelength").
         If not None, matched satellite spectra are returned with one column per
         wavelength. If None, only a single variable is extracted.
+
+    ds_vec_sel : value or None, optional
+        Value of the spectral dimension in the PACE dataset (e.g. "wavelength")
+        to select. If None, matched satellite spectra are returned with one column per
+        wavelength. If given, only a single variable is extracted for that value.
 
     ds_var_name : str, optional
         Name of the satellite variable to extract from the PACE dataset
@@ -1844,6 +1850,9 @@ Examples
 
         if ds_vec_name is not None:
             vec_vals = ds[ds_vec_name].values
+            if ds_vec_sel is not None:
+                m = vec_vals == ds_vec_sel
+                vec_vals = vec_vals[m]
             for j, v in enumerate(vec_vals):
                 label = int(v)
                 col_name = f"pace_{ds_var_name}_{label}"

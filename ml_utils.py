@@ -2152,14 +2152,20 @@ def stac_to_readme(
                     readme_lines.append(f"  \n  Public URL: {public_url}\n")
 
                 # Python example
-                readme_lines.append("  **Python load example:**\n\n")
+                readme_lines.append("  **Python load example:**\n")
 
                 if href.endswith(".parquet"):
-                    readme_lines.append("  ```python\n")
-                    readme_lines.append("  import pandas as pd\n")
-                    readme_lines.append(f"  url = '{public_url}'\n")
-                    readme_lines.append("  df = pd.read_parquet(url)\n")
+                    readme_lines.append("  ```python")
+                    readme_lines.append("  import pandas as pd")
+                    readme_lines.append(f"  url = '{public_url}'")
+                    readme_lines.append("  df = pd.read_parquet(url)")
                     readme_lines.append("  df.head()\n")
+                    readme_lines.append("  # You can read metadata with pyarrow")
+                    readme_lines.append("  import fsspec")
+                    readme_lines.append("  import pyarrow.parquet as pq")
+                    readme_lines.append("  with fsspec.open(url, 'rb') as f:")
+                    readme_lines.append("      t = pq.read_table(f)")
+                    readme_lines.append("  t.schema.metadata")
                     readme_lines.append("  ```\n\n")
 
                 elif href.endswith((".nc", ".nc4", ".zarr")):

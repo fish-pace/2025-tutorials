@@ -1809,7 +1809,9 @@ Examples
             fname = src.split("/")[-1] if "/" in src else src
 
         df_times = pd.to_datetime(df[df_time_name], utc=True)
-        df_record = df[(df_times >= t_start) & (df_times < t_end)]
+        # Use 24 hours so as not to cut off data if the window is small
+        t_end_24 = t_start + pd.Timedelta(hours=24)
+        df_record = df[(df_times >= t_start) & (df_times < t_end_24)]
 
         if df_record.empty:
             return None, None

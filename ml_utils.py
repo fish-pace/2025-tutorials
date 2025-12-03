@@ -2089,6 +2089,11 @@ def stac_to_readme(
         title = props.get("title", item.get("id"))
         readme_lines.append(f"## {i}. {title}\n")
 
+        # File Nme
+        file_name_ = props.get("file_name")
+        if file_name_:
+            readme_lines.append(f"**File name:** {file_name_}\n")
+
         readme_lines.append(f"**ID:** `{item.get('id')}`\n")
 
         # Description

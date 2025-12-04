@@ -2136,7 +2136,7 @@ def stac_to_readme(
         nb_path = props.get("tutorial_notebook")
         if nb_path:
             readme_lines.append("**Creation / provenance notebook:**\n")
-            readme_lines.append(f"- `{nb_path}`\n")
+            readme_lines.append(f"- [{nb_path}]({nb_path})\n")
 
         # Data assets
         if assets:

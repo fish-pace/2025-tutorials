@@ -25,7 +25,7 @@ Per-profile CHLA metrics from all global BGC-Argo floats from Mar 2024 to Nov 20
 
 **Creation / provenance notebook:**
 
-- `https://github.com/fish-pace/2025-tutorials/blob/main/argopy.ipynb`
+- [https://github.com/fish-pace/2025-tutorials/blob/main/argopy.ipynb](https://github.com/fish-pace/2025-tutorials/blob/main/argopy.ipynb)
 
 **Data file(s):**
 
@@ -70,7 +70,7 @@ Per-profile CHLA metrics from all global BGC-Argo floats from Mar 2024 to Nov 20
 
 **Creation / provenance notebook:**
 
-- `https://github.com/fish-pace/2025-tutorials/blob/main/argo-matchups.ipynb`
+- [https://github.com/fish-pace/2025-tutorials/blob/main/argo-matchups.ipynb](https://github.com/fish-pace/2025-tutorials/blob/main/argo-matchups.ipynb)
 
 **Data file(s):**
 

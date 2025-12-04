@@ -1,0 +1,116 @@
+{
+  "type": "Collection",
+  "stac_version": "1.0.0",
+  "id": "fish-pace-2025-tutorial-data",
+  "description": "Datasets used in the Fish-PACE 2025 tutorials (Parquet, NetCDF, and related files in tutorial_data/).",
+  "license": "Open access where specified by each dataset's source; see per-item metadata.",
+  "links": [],
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180.0,
+          -90.0,
+          180.0,
+          90.0
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2024-01-01T00:00:00Z",
+          null
+        ]
+      ]
+    }
+  },
+  "keywords": [
+    "Argo",
+    "BGC-Argo",
+    "chlorophyll-a",
+    "ocean color",
+    "tutorials",
+    "Fish-PACE"
+  ],
+  "providers": [
+    {
+      "name": "Fish-PACE Tutorials",
+      "roles": [
+        "host",
+        "processor"
+      ],
+      "url": "https://github.com/fish-pace/2025-tutorials"
+    }
+  ],
+  "summaries": {},
+  "assets": {},
+  "item_assets": {},
+  "items": [
+    {
+      "type": "Feature",
+      "stac_version": "1.0.0",
+      "id": "global-bio-argo-chla-profile-metrics-0-200m-10m-bins",
+      "properties": {
+        "title": "Global Bio-Argo CHLA profile metrics (0\u2013200 m, 10 m bins)",
+        "description": "Per-profile CHLA metrics from all global BGC-Argo floats from Mar 2024 to Nov 2025, depth-binned from 0\u2013200 m in 10 m bins using unadjusted CHLA values.",
+        "created": "2025-12-04T00:38:00.607654Z",
+        "start_datetime": "2024-03-01T00:00:00Z",
+        "end_datetime": "2025-11-30T23:59:59Z",
+        "license": "Open access (Argo Data Policy); unrestricted use with attribution.",
+        "variable": "CHLA",
+        "platform": "BGC-Argo",
+        "tutorial_notebook": "https://github.com/fish-pace/2025-tutorials/blob/main/argopy.ipynb",
+        "file_name": "CHLA_argo_profiles.parquet"
+      },
+      "geometry": null,
+      "bbox": null,
+      "assets": {
+        "data": {
+          "href": "https://raw.githubusercontent.com/fish-pace/2025-tutorials/main/data/CHLA_argo_profiles.parquet",
+          "type": "application/x-parquet",
+          "roles": [
+            "data"
+          ],
+          "title": "Global Bio-Argo CHLA profile metrics (0\u2013200 m, 10 m bins)"
+        }
+      },
+      "links": []
+    },
+    {
+      "type": "Feature",
+      "stac_version": "1.0.0",
+      "id": "global-bio-argo-chla-profile-metrics-0-200m-10m-bins-with-pace-oci-matchups",
+      "properties": {
+        "title": "Global Bio-Argo CHLA profile metrics (0\u2013200 m, 10 m bins) with PACE Rrs, chlor_a, and Kd_490 matchups",
+        "description": "Per-profile CHLA metrics from all global BGC-Argo floats from Mar 2024 to Nov 2025, depth-binned from 0\u2013200 m in 10 m bins using unadjusted CHLA values, matched to PACE OCI Level-3 4 km v3.1 Daily Rrs, chlor_a, and Kd_490. Profiles are matched to PACE Level-3 pixels within 24 hours of the file t_start attribute and to the nearest 4 km grid cell in latitude/longitude.",
+        "created": "2025-12-04T00:31:51.367202Z",
+        "start_datetime": "2024-03-01T00:00:00Z",
+        "end_datetime": "2025-11-30T23:59:59Z",
+        "license": "Open access (Argo Data Policy); unrestricted use with attribution.",
+        "variables": [
+          "CHLA",
+          "Rrs",
+          "chlor_a",
+          "Kd_490"
+        ],
+        "platform": "BGC-Argo + PACE OCI",
+        "tutorial_notebook": "https://github.com/fish-pace/2025-tutorials/blob/main/argo-matchups.ipynb",
+        "file_name": "CHLA_argo_profiles_plus_PACE.parquet"
+      },
+      "geometry": null,
+      "bbox": null,
+      "assets": {
+        "data": {
+          "href": "https://raw.githubusercontent.com/fish-pace/2025-tutorials/main/data/CHLA_argo_profiles_plus_PACE.parquet",
+          "type": "application/x-parquet",
+          "roles": [
+            "data"
+          ],
+          "title": "Global Bio-Argo CHLA profile metrics (0\u2013200 m, 10 m bins) with PACE Rrs, chlor_a, and Kd_490 matchups"
+        }
+      },
+      "links": []
+    }
+  ]
+}

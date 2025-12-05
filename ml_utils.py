@@ -1222,81 +1222,177 @@ def add_sin_coords(ds):
         lat_sin=(('lat','lon'), np.sin(latr).astype('float32')),
     )
 
-def add_spherical_coords(ds, lat="lat", lon="lon"):
+import numpy as np
+import xarray as xr
+import pandas as pd
+
+def add_spherical_coords(obj, lat="lat", lon="lon"):
     """
     Add 3D unit-sphere coordinates (x_geo, y_geo, z_geo) computed from lat/lon.
 
-    Works with Dask-backed or in-memory xarray Datasets.
-    No .values used; stays lazy when possible.
+    - If `obj` is an xarray.Dataset:
+        * Assumes `lat` and `lon` are 1D coordinates.
+        * Broadcasts to 2D over (lat, lon) and keeps Dask laziness.
+        * Returns an xarray.Dataset with x_geo, y_geo, z_geo variables.
 
-    Returns
-    -------
-    xarray.Dataset
-        Original ds plus float32 x_geo, y_geo, z_geo on (lat, lon).
-    """
-    # Make 2D lat/lon without materializing into NumPy arrays
-    lat2d, lon2d = xr.broadcast(ds[lat], ds[lon])          # (lat, lon), (lat, lon)
-
-    # radians (lazy if dask)
-    psi = xr.apply_ufunc(np.deg2rad, lat2d, dask="parallelized")
-    lam = xr.apply_ufunc(np.deg2rad, lon2d, dask="parallelized")
-
-    x_geo = xr.apply_ufunc(np.cos, psi, dask="parallelized") * xr.apply_ufunc(np.cos, lam, dask="parallelized")
-    y_geo = xr.apply_ufunc(np.cos, psi, dask="parallelized") * xr.apply_ufunc(np.sin, lam, dask="parallelized")
-    z_geo = xr.apply_ufunc(np.sin, psi, dask="parallelized")
-
-    return ds.assign(
-        x_geo=x_geo.astype("float32"),
-        y_geo=y_geo.astype("float32"),
-        z_geo=z_geo.astype("float32"),
-    )
-    
-def add_seasonal_time_features(dataset, ref_var="sst"):
-    """
-    Add sin_time and cos_time (seasonal cycle) on (time, lat, lon).
-
-    - Uses xarray's datetime accessor (works with numpy/cftime)
-    - Broadcasts across space using xarray, preserving Dask chunking when present
-    - If `ref_var` isn't in ds, tries to infer a 3D (time, lat, lon) variable
+    - If `obj` is a pandas.DataFrame:
+        * Assumes `lat` and `lon` are columns.
+        * Computes per-row x_geo, y_geo, z_geo columns.
+        * Returns a new DataFrame (original is not modified in place).
 
     Parameters
     ----------
-    dataset : xr.Dataset
-    ref_var : str
-        Name of a 3D variable to define the (time, lat, lon) shape for broadcasting.
+    obj : xarray.Dataset or pandas.DataFrame
+    lat : str
+        Name of latitude coordinate/column in degrees.
+    lon : str
+        Name of longitude coordinate/column in degrees.
 
     Returns
     -------
-    xr.Dataset
-        With sin_time and cos_time (float32).
+    xarray.Dataset or pandas.DataFrame
     """
-    if "time" not in dataset.coords:
-        raise ValueError("Dataset has no 'time' coordinate.")
+    # ---- xarray path --------------------------------------------------------
+    if isinstance(obj, xr.Dataset):
+        ds = obj
 
-    if ref_var not in dataset.data_vars:
-        # try to infer a suitable 3D var
-        candidates = [v for v, da in dataset.data_vars.items() if set(da.dims) >= {"time", "lat", "lon"}]
-        if not candidates:
-            raise ValueError("Could not find a 3D (time, lat, lon) variable to broadcast across. "
-                             "Pass ref_var='<your_var>' explicitly.")
-        ref_var = candidates[0]
+        # 2D lat/lon (lazy if dask)
+        lat2d, lon2d = xr.broadcast(ds[lat], ds[lon])   # (lat, lon), (lat, lon)
 
-    # day-of-year (1..366). Works with numpy/cftime calendars.
-    doy = dataset["time"].dt.dayofyear
+        # radians (lazy)
+        psi = xr.apply_ufunc(np.deg2rad, lat2d, dask="parallelized")
+        lam = xr.apply_ufunc(np.deg2rad, lon2d, dask="parallelized")
 
-    # Use a smooth year length; change to 365 or 366 if you prefer strict calendars
-    rad = 2 * np.pi * (doy / 365.25)
+        x_geo = xr.apply_ufunc(np.cos, psi, dask="parallelized") * xr.apply_ufunc(np.cos, lam, dask="parallelized")
+        y_geo = xr.apply_ufunc(np.cos, psi, dask="parallelized") * xr.apply_ufunc(np.sin, lam, dask="parallelized")
+        z_geo = xr.apply_ufunc(np.sin, psi, dask="parallelized")
 
-    sin_t = xr.apply_ufunc(np.sin, rad, dask="parallelized").astype("float32")
-    cos_t = xr.apply_ufunc(np.cos, rad, dask="parallelized").astype("float32")
+        return ds.assign(
+            x_geo=x_geo.astype("float32"),
+            y_geo=y_geo.astype("float32"),
+            z_geo=z_geo.astype("float32"),
+        )
 
-    # Broadcast time-only arrays to (time, lat, lon) using xarray
-    sin_3d, _ = xr.broadcast(sin_t, dataset[ref_var])
-    cos_3d, _ = xr.broadcast(cos_t, dataset[ref_var])
+    # ---- pandas path --------------------------------------------------------
+    if isinstance(obj, pd.DataFrame):
+        df = obj.copy()
 
-    return dataset.assign(
-        sin_time=sin_3d,
-        cos_time=cos_3d,
+        # radians (vectorized numpy on Series)
+        psi = np.deg2rad(df[lat].to_numpy())
+        lam = np.deg2rad(df[lon].to_numpy())
+
+        x_geo = np.cos(psi) * np.cos(lam)
+        y_geo = np.cos(psi) * np.sin(lam)
+        z_geo = np.sin(psi)
+
+        df["x_geo"] = x_geo.astype("float32")
+        df["y_geo"] = y_geo.astype("float32")
+        df["z_geo"] = z_geo.astype("float32")
+
+        return df
+
+    # ---- unsupported type ---------------------------------------------------
+    raise TypeError(
+        f"add_spherical_coords expected xarray.Dataset or pandas.DataFrame, "
+        f"got {type(obj)}"
+    )
+
+import numpy as np
+import xarray as xr
+import pandas as pd
+
+def add_seasonal_time_features(obj, ref_var="sst", time="time"):
+    """
+    Add seasonal time features (sin_time, cos_time) based on day-of-year.
+
+    - If `obj` is an xarray.Dataset:
+        * Uses a time coordinate `time` (default 'time').
+        * Computes sin_time, cos_time as 3D fields on (time, lat, lon),
+          broadcasting using `ref_var` (or infers one).
+        * Preserves Dask laziness.
+
+    - If `obj` is a pandas.DataFrame:
+        * Uses a datetime-like column `time` (default 'time').
+        * Adds per-row float32 columns sin_time and cos_time.
+
+    Parameters
+    ----------
+    obj : xr.Dataset or pd.DataFrame
+    ref_var : str
+        For xarray: name of a 3D (time, lat, lon) variable to define the
+        broadcast shape. Ignored for pandas.
+    time : str
+        Name of the time coordinate/column.
+
+    Returns
+    -------
+    xr.Dataset or pd.DataFrame
+    """
+
+    # ---------------- xarray path ----------------
+    if isinstance(obj, xr.Dataset):
+        ds = obj
+
+        if time not in ds.coords:
+            raise ValueError(f"Dataset has no '{time}' coordinate.")
+
+        if ref_var not in ds.data_vars:
+            # try to infer a suitable 3D var
+            candidates = [
+                v
+                for v, da in ds.data_vars.items()
+                if set(da.dims) >= {"time", "lat", "lon"}
+            ]
+            if not candidates:
+                raise ValueError(
+                    "Could not find a 3D (time, lat, lon) variable to broadcast across. "
+                    "Pass ref_var='<your_var>' explicitly."
+                )
+            ref_var = candidates[0]
+
+        # day-of-year (1..366). Works with numpy/cftime calendars.
+        doy = ds[time].dt.dayofyear
+
+        # Smooth year length; change to 365/366 for strict calendars if you like
+        rad = 2 * np.pi * (doy / 365.25)
+
+        sin_t = xr.apply_ufunc(np.sin, rad, dask="parallelized").astype("float32")
+        cos_t = xr.apply_ufunc(np.cos, rad, dask="parallelized").astype("float32")
+
+        # Broadcast time-only arrays to (time, lat, lon) using xarray
+        sin_3d, _ = xr.broadcast(sin_t, ds[ref_var])
+        cos_3d, _ = xr.broadcast(cos_t, ds[ref_var])
+
+        return ds.assign(
+            sin_time=sin_3d,
+            cos_time=cos_3d,
+        )
+
+    # ---------------- pandas path ----------------
+    if isinstance(obj, pd.DataFrame):
+        df = obj.copy()
+
+        if time not in df.columns:
+            raise ValueError(f"DataFrame has no '{time}' column.")
+
+        # Ensure datetime, then day-of-year
+        time_series = pd.to_datetime(df[time])
+        doy = time_series.dt.dayofyear.to_numpy()
+
+        rad = 2 * np.pi * (doy / 365.25)
+
+        sin_t = np.sin(rad).astype("float32")
+        cos_t = np.cos(rad).astype("float32")
+
+        df["sin_time"] = sin_t
+        df["cos_time"] = cos_t
+
+        return df
+
+    # ---------------- unsupported type ----------------
+    raise TypeError(
+        f"add_seasonal_time_features expected xarray.Dataset or pandas.DataFrame, "
+        f"got {type(obj)}"
     )
 
 import numpy as np
